@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.dujia.agenticrag.mapper.KbDocumentMapper">
+
+    <resultMap id="BaseResultMap" type="org.dujia.agenticrag.domain.KbDocument">
+            <id property="id" column="id" />
+            <result property="assistantId" column="assistant_id" />
+            <result property="fileName" column="file_name" />
+            <result property="fileType" column="file_type" />
+            <result property="fileUrl" column="file_url" />
+            <result property="parseStatus" column="parse_status" />
+            <result property="errorMsg" column="error_msg" />
+            <result property="chunkCount" column="chunk_count" />
+            <result property="createTime" column="create_time" />
+            <result property="updateTime" column="update_time" />
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id,assistant_id,file_name,file_type,file_url,parse_status,
+        error_msg,chunk_count,create_time,update_time
+    </sql>
+</mapper>

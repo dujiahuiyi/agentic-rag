@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.dujia.agenticrag.mapper.AiAssistantMapper">
+
+    <resultMap id="BaseResultMap" type="org.dujia.agenticrag.domain.AiAssistant">
+            <id property="id" column="id" />
+            <result property="userId" column="user_id" />
+            <result property="name" column="name" />
+            <result property="avatar" column="avatar" />
+            <result property="systemPrompt" column="system_prompt" />
+            <result property="modelName" column="model_name" />
+            <result property="isDefault" column="is_default" />
+            <result property="createTime" column="create_time" />
+            <result property="updateTime" column="update_time" />
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id,user_id,name,avatar,system_prompt,model_name,
+        is_default,create_time,update_time
+    </sql>
+</mapper>
