@@ -38,8 +38,6 @@ public class GlobalExceptionHandler {
         return Result.fail(404, "路径不存在" + e.getResourcePath());
     }
 
-    //study: validation异常报错处理
-
     /**
      * 处理 @RequestBody 参数校验异常
      */
