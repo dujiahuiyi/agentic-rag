@@ -2,6 +2,7 @@ package org.dujia.agenticrag.service;
 
 import org.dujia.agenticrag.domain.KbDocument;
 import com.baomidou.mybatisplus.extension.service.IService;
+import org.springframework.web.multipart.MultipartFile;
 
 /**
 * @author 夜聆秋雨
@@ -10,4 +11,5 @@ import com.baomidou.mybatisplus.extension.service.IService;
 */
 public interface KbDocumentService extends IService<KbDocument> {
 
+    Long uploadDocument(MultipartFile file, Long assistantId);
 }

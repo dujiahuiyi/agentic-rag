@@ -59,3 +59,14 @@ jwt:
   secret: mySecretKey1234567890tytytytytytyhhh
   # 过期时间（单位：毫秒） 1天 = 86400000
   expire: 86400000
+langchain4j:
+  open-ai:
+    streaming-chat-model:
+      api-key:
+      model-name:
+      base-url:
+app:
+  file:
+    upload-dir:
+  ai:
+    embedding_model_api_key:

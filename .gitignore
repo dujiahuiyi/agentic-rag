@@ -1,5 +1,9 @@
 HELP.md
 application.yml
+向量数据库.md
+开发文档.md
+接口文档.md
+数据库.md
 target/
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
