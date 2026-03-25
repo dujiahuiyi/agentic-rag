@@ -1,5 +1,6 @@
 package org.dujia.agenticrag.controllers;
 
+import org.dujia.agenticrag.annotations.CurrentUserId;
 import org.dujia.agenticrag.service.OpenAiStreamingService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -13,7 +14,7 @@ public class TestController {
     private OpenAiStreamingService openAiStreamingService;
 
     @RequestMapping("/stream")
-    public SseEmitter chat(String message) {
-        return openAiStreamingService.streamChatResponse(message);
+    public SseEmitter chat(String message, @CurrentUserId Long userId) {
+        return openAiStreamingService.streamChatResponse(message, userId);
     }
 }
