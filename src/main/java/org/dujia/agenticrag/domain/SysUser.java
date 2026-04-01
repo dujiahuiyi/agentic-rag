@@ -38,7 +38,7 @@ public class SysUser implements Serializable {
     /**
      * 逻辑删除 (0正常 1删除)
      */
-    private Integer isDeleted;
+    private Integer isDeleted = 0;
 
     /**
      * 创建时间

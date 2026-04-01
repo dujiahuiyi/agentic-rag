@@ -5,7 +5,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.dujia.agenticrag.domain.Assistant;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import org.springframework.web.servlet.View;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
@@ -13,20 +12,58 @@ import java.io.IOException;
 @Slf4j
 @Service
 public class OpenAiStreamingService {
-//    private final StreamingChatLanguageModel streamingChatLanguageModel;
+
+    private final Assistant assistant;
+
+    @Autowired
+    public OpenAiStreamingService(Assistant assistant) {
+        this.assistant = assistant;
+    }
+
+    // study: 流式输出
+    public SseEmitter streamChatResponse(String userMessage, Long userId) {
+        SseEmitter emitter = new SseEmitter(300000L);
+        emitter.onCompletion(() -> log.info("SSE 连接已完成: User ID {}", userId));
+        emitter.onTimeout(() -> {
+            log.warn("SSE 连接超时: User ID {}", userId);
+            emitter.complete();
+        });
+
+        TokenStream tokenStream = assistant.chat(userId, userMessage);
+
+        tokenStream
+                .onPartialResponse(token -> {
+                    try {
+                        emitter.send(SseEmitter.event().data(token));
+                    } catch (IOException e) {
+                        log.warn("发送 Token 失败，客户端可能已断开: {}", e.getMessage());
+                        emitter.completeWithError(e);
+                    }
+                }).onCompleteResponse(chatResponse -> {
+                    if (chatResponse.tokenUsage() != null) {
+                        log.info("回答生成完毕，总消耗 Token: {}", chatResponse.tokenUsage().totalTokenCount());
+                    } else {
+                        log.info("回答生成完毕，未能获取 Token 消耗统计");
+                    }
+                    emitter.complete();
+                }).onError(error -> {
+                    log.error("大模型生成流发生异常", error);
+                    try {
+                        emitter.send(SseEmitter.event().name("error").data("大模型服务异常，请稍后再试。"));
+                    } catch (IOException e) {
+                        emitter.completeWithError(error);
+
+                    }
+                }).start();
+        return emitter;
+    }
+
+
+
+    //    private final StreamingChatLanguageModel streamingChatLanguageModel;
 //    private final RetrievalAugmentor retrievalAugmentor;
     // todo: 需不需独立出来一个类
 //    private final ConcurrentHashMap<Object, ChatMemory> memoryMap;
-
-    private final Assistant assistant;
-    private final View error;
-
-    @Autowired
-    public OpenAiStreamingService(Assistant assistant, View error) {
-        this.assistant = assistant;
-        this.error = error;
-    }
-
 //    @Autowired
 //    public OpenAiStreamingService(Assistant assistant) {
 //        this.streamingChatLanguageModel = streamingChatLanguageModel;
@@ -80,41 +117,4 @@ public class OpenAiStreamingService {
 //        return emitter;
 //    }
 
-    // study: 流式输出
-    public SseEmitter streamChatResponse(String userMessage, Long userId) {
-        SseEmitter emitter = new SseEmitter(300000L);
-        emitter.onCompletion(() -> log.info("SSE 连接已完成: User ID {}", userId));
-        emitter.onTimeout(() -> {
-            log.warn("SSE 连接超时: User ID {}", userId);
-            emitter.complete();
-        });
-
-        TokenStream tokenStream = assistant.chat(userId, userMessage);
-
-        tokenStream
-                .onPartialResponse(token -> {
-            try {
-                emitter.send(SseEmitter.event().data(token));
-            } catch (IOException e) {
-                log.warn("发送 Token 失败，客户端可能已断开: {}", e.getMessage());
-                emitter.completeWithError(e);
-            }
-        }).onCompleteResponse(chatResponse -> {
-                    if (chatResponse.tokenUsage() != null) {
-                        log.info("回答生成完毕，总消耗 Token: {}", chatResponse.tokenUsage().totalTokenCount());
-                    } else {
-                        log.info("回答生成完毕，未能获取 Token 消耗统计");
-                    }
-                    emitter.complete();
-        }).onError(error -> {
-                    log.error("大模型生成流发生异常", error);
-                    try {
-                        emitter.send(SseEmitter.event().name("error").data("大模型服务异常，请稍后再试。"));
-                    } catch (IOException e) {
-                        emitter.completeWithError(error);
-
-                    }
-                }).start();
-        return emitter;
-    }
 }

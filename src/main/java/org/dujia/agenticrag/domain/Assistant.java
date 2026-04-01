@@ -6,6 +6,7 @@ import dev.langchain4j.service.TokenStream;
 import dev.langchain4j.service.UserMessage;
 
 public interface Assistant {
+    // todo: 不要写死，从ai_assistant表里的system_prompt获取，或者根据上传的文档自动生成
     @SystemMessage("你是一个智能助手，能根据提供的上下文回答问题")
     TokenStream chat(@MemoryId Long userId, @UserMessage String userMessage);
 }

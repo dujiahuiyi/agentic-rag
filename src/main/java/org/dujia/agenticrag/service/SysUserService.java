@@ -2,6 +2,9 @@ package org.dujia.agenticrag.service;
 
 import org.dujia.agenticrag.domain.SysUser;
 import com.baomidou.mybatisplus.extension.service.IService;
+import org.dujia.agenticrag.domain.UserDto;
+import org.dujia.agenticrag.domain.UserRequest;
+import org.dujia.agenticrag.domain.UserResponse;
 
 /**
 * @author 夜聆秋雨
@@ -10,4 +13,7 @@ import com.baomidou.mybatisplus.extension.service.IService;
 */
 public interface SysUserService extends IService<SysUser> {
 
+    UserDto register(UserRequest userRequest);
+
+    UserResponse login(UserRequest userRequest);
 }

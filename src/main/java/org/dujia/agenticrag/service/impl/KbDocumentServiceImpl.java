@@ -42,6 +42,8 @@ public class KbDocumentServiceImpl extends ServiceImpl<KbDocumentMapper, KbDocum
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long uploadDocument(MultipartFile file, Long assistantId) {
+        // todo: 需不要加入redis？加入了能干嘛
+
         // study: 本地文件写入
         String fileName = file.getOriginalFilename();
         String fileExtension = "";
@@ -55,6 +57,7 @@ public class KbDocumentServiceImpl extends ServiceImpl<KbDocumentMapper, KbDocum
         }
         File descFile = new File(uploadUrl + newFileName);
         try {
+            // study: 不能也在后台进行，当接口结束，spring会自己清理临时文件
             file.transferTo(descFile);
         } catch (IOException e) {
             throw new RuntimeException("文件储存到本地失败");
@@ -68,11 +71,13 @@ public class KbDocumentServiceImpl extends ServiceImpl<KbDocumentMapper, KbDocum
         kbDocument.setFileUrl(absolutePath);
         kbDocument.setParseStatus(0);
 
+        // todo: 可后台进行
         kbDocumentMapper.insert(kbDocument);
 
         // study: mybatis-plus雪花算法生成 id 后自动回填主键 id
         Long takeId = kbDocument.getId();
 
+        // 后台mq往milvus里塞
         DocumentMessage message = new DocumentMessage(takeId, absolutePath, assistantId);
         rabbitTemplate.convertAndSend(
                 Common.UPLOAD_EXCHANGE,

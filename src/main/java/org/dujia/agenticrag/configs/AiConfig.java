@@ -1,12 +1,12 @@
 package org.dujia.agenticrag.configs;
 
+import dev.langchain4j.data.document.parser.apache.tika.ApacheTikaDocumentParser;
 import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.memory.ChatMemory;
 import dev.langchain4j.memory.chat.ChatMemoryProvider;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.cohere.CohereScoringModel;
-import dev.langchain4j.model.embedding.EmbeddingModel;
 import dev.langchain4j.model.openai.OpenAiChatModel;
 import dev.langchain4j.model.openai.OpenAiEmbeddingModel;
 import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
@@ -32,7 +32,6 @@ import org.springframework.context.annotation.Configuration;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
 import static dev.langchain4j.store.embedding.filter.MetadataFilterBuilder.metadataKey;
@@ -51,30 +50,37 @@ public class AiConfig {
     @Value("${app.ai.reranker_model_model}")
     private String rerankerModel;
 
-    private final EmbeddingStore<TextSegment> embeddingStore;
-    private final EmbeddingModel embeddingModel;
-    private final GoogleSearch googleSearch;
-    private final ContentRetriever contentRetriever;
-    private final OpenAiChatModel openAiChatModel;
-    private final ScoringModel scoringModel;
-    private final ContentAggregator contentAggregator;
-    private final QueryRouter queryRouter;
 
-    public AiConfig(EmbeddingStore<TextSegment> embeddingStore,
-                    EmbeddingModel embeddingModel,
-                    ContentRetriever contentRetriever,
-                    OpenAiChatModel openAiChatModel,
-                    ScoringModel scoringModel,
-                    ContentAggregator contentAggregator,
-                    QueryRouter queryRouter) {
-        this.embeddingStore = embeddingStore;
-        this.contentRetriever = contentRetriever;
-        this.embeddingModel = embeddingModel;
-        this.openAiChatModel = openAiChatModel;
-        this.scoringModel = scoringModel;
-        this.contentAggregator = contentAggregator;
-        this.queryRouter = queryRouter;
-        this.googleSearch = new GoogleSearch();
+    // study: 不需要定义出来，可在下面的要用到的方法里使用参数直接传入，spring boot会自己处理导入 （Spring IoC）
+//    private final EmbeddingStore<TextSegment> embeddingStore;
+//    private final EmbeddingModel embeddingModel;
+//    private final GoogleSearch googleSearch;
+//    private final ContentRetriever contentRetriever;
+//    private final OpenAiChatModel openAiChatModel;
+//    private final ScoringModel scoringModel;
+//    private final ContentAggregator contentAggregator;
+//    private final QueryRouter queryRouter;
+
+//    public AiConfig(EmbeddingStore<TextSegment> embeddingStore,
+//                    EmbeddingModel embeddingModel,
+//                    ContentRetriever contentRetriever, // study: 这个依赖了embeddingModel，会造成循环依赖
+//                    OpenAiChatModel openAiChatModel,
+//                    ScoringModel scoringModel,
+//                    ContentAggregator contentAggregator,
+//                    QueryRouter queryRouter) {
+//        this.embeddingStore = embeddingStore;
+//        this.contentRetriever = contentRetriever;
+//        this.embeddingModel = embeddingModel;
+//        this.openAiChatModel = openAiChatModel;
+//        this.scoringModel = scoringModel;
+//        this.contentAggregator = contentAggregator;
+//        this.queryRouter = queryRouter;
+//        this.googleSearch = new GoogleSearch();
+//    }
+
+    @Bean
+    public ApacheTikaDocumentParser documentParser() {
+        return new ApacheTikaDocumentParser();
     }
 
     @Bean
@@ -118,12 +124,14 @@ public class AiConfig {
     }
 
     @Bean
-    public ContentRetriever contentRetriever() {
+    public ContentRetriever contentRetriever(EmbeddingStore<TextSegment> embeddingStore,
+                                             OpenAiEmbeddingModel embeddingModel) {
         return EmbeddingStoreContentRetriever.builder()
                 .embeddingModel(embeddingModel)
                 .maxResults(3)
                 .minScore(0.75)
                 .embeddingStore(embeddingStore)
+                // todo: 写死 1 不管哪个用户，都会请求一号助手
                 .filter(metadataKey("assistant_id").isEqualTo(1))
                 .build();
     }
@@ -139,15 +147,18 @@ public class AiConfig {
     }
 
     @Bean
-    public QueryRouter queryRouter() {
+    public QueryRouter queryRouter(OpenAiChatModel openAiChatModel,
+                                   ContentRetriever contentRetriever) {
+        GoogleSearch googleSearch = new GoogleSearch();
         Map<ContentRetriever, String> map = new HashMap<>();
         map.put(googleSearch, "谷歌搜索，遇到本地知识库里没有的问题时可以上网搜索");
         map.put(contentRetriever, "本地向量数据库，优先检索");
+        // todo: 会增加RT，可以使用多路召回，然后给ScoringModel重排
         return new LanguageModelQueryRouter(openAiChatModel, map);
     }
 
     @Bean
-    public ContentAggregator contentAggregator() {
+    public ContentAggregator contentAggregator(ScoringModel scoringModel) {
         return ReRankingContentAggregator.builder()
                 .scoringModel(scoringModel)
                 .minScore(0.75)
@@ -155,7 +166,9 @@ public class AiConfig {
     }
 
     @Bean
-    public RetrievalAugmentor retrievalAugmentor() {
+    public RetrievalAugmentor retrievalAugmentor(OpenAiChatModel openAiChatModel,
+                                                 QueryRouter queryRouter,
+                                                 ContentAggregator contentAggregator) {
         //study: 使用queryRouter还需要contentRetriever吗
         return DefaultRetrievalAugmentor.builder()
                 .queryTransformer(new CompressingQueryTransformer(openAiChatModel))
@@ -167,6 +180,7 @@ public class AiConfig {
 
     @Bean
     public ChatMemoryProvider chatMemoryProvider() {
+        // todo: 会造成内存溢出，可以存到redis和mysql
         ConcurrentHashMap<Object, ChatMemory> map = new ConcurrentHashMap<>();
         return memoryId -> map.computeIfAbsent(memoryId, id ->
                 MessageWindowChatMemory.builder()
@@ -179,6 +193,7 @@ public class AiConfig {
     public Assistant assistant(StreamingChatLanguageModel streamingChatLanguageModel,
                                ChatMemoryProvider chatMemoryProvider,
                                RetrievalAugmentor retrievalAugmentor) {
+        //todo: 单例之后，如何确保不同用户之间不互通记忆
         return AiServices.builder(Assistant.class)
                 .streamingChatLanguageModel(streamingChatLanguageModel)
                 .chatMemoryProvider(chatMemoryProvider)

@@ -1,15 +1,13 @@
 package org.dujia.agenticrag.controllers;
 
 import org.dujia.agenticrag.annotations.CurrentUserId;
+import org.dujia.agenticrag.domain.KbDocument;
 import org.dujia.agenticrag.enums.ErrorCode;
 import org.dujia.agenticrag.exceptions.BaseException;
 import org.dujia.agenticrag.service.KbDocumentService;
 import org.dujia.agenticrag.service.OpenAiStreamingService;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -41,5 +39,20 @@ public class APIController {
     @RequestMapping("/chat/completions")
     public SseEmitter chat(String message, @CurrentUserId Long userId) {
         return openAiStreamingService.streamChatResponse(message, userId);
+    }
+
+    @GetMapping("/kb/status/{task_id}")
+    public Map<String, Object> getUploadStatus(@PathVariable("task_id") Long taskId) {
+        // todo: 是否真的需要加redis
+        KbDocument doc = kbDocumentService.getById(taskId);
+
+        if (doc == null) {
+            throw new BaseException(ErrorCode.DOCUMENT_NOT_FOUND);
+        }
+
+        return Map.of(
+                "status", doc.getParseStatus(),
+                "error_msg", doc.getErrorMsg() == null ? "" : doc.getErrorMsg()
+        );
     }
 }

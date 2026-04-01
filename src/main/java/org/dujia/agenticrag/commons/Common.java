@@ -13,4 +13,8 @@ public class Common {
     public static final String TOKEN_ERROR = "token异常，请查看日志";
     public static final String UNAUTHORIZED = "未认证，请先登录";
     public static final String THE_FILE_CANNOT_BE_EMPTY = "文件不能为空";
+    public static final String DOCUMENT_NOT_FOUND = "文档不存在";
+    public static final String FAIL_TO_REGISTER = "注册失败";
+    public static final String USER_NOT_FOUND = "用户不存在";
+    public static final String INVALID_USERNAME_OR_PASSWORD = "用户名或密码错误";
 }
