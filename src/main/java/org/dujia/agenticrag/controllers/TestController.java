@@ -13,8 +13,8 @@ public class TestController {
     @Autowired
     private OpenAiStreamingService openAiStreamingService;
 
-    @RequestMapping("/stream")
-    public SseEmitter chat(String message, @CurrentUserId Long userId) {
-        return openAiStreamingService.streamChatResponse(message, userId);
-    }
+//    @RequestMapping("/stream")
+//    public SseEmitter chat(String message, @CurrentUserId Long userId) {
+//        return openAiStreamingService.streamChatResponse(message, userId);
+//    }
 }

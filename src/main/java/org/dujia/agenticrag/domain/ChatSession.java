@@ -38,7 +38,7 @@ public class ChatSession implements Serializable {
     /**
      * 是否已删除
      */
-    private Long isDeleted;
+    private Long isDeleted = 0L;
 
     /**
      * 会话创建时间

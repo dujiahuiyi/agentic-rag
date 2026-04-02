@@ -17,4 +17,6 @@ public class Common {
     public static final String FAIL_TO_REGISTER = "注册失败";
     public static final String USER_NOT_FOUND = "用户不存在";
     public static final String INVALID_USERNAME_OR_PASSWORD = "用户名或密码错误";
+    public static final String INVALID_SESSION_ID = "sessionId不合法";
+    public static final String UNAUTHORIZED_ACCESS = "无权访问该会话";
 }

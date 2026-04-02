@@ -191,11 +191,13 @@ public class AiConfig {
 
     @Bean
     public Assistant assistant(StreamingChatLanguageModel streamingChatLanguageModel,
+                               OpenAiChatModel chatModel,
                                ChatMemoryProvider chatMemoryProvider,
                                RetrievalAugmentor retrievalAugmentor) {
         //todo: 单例之后，如何确保不同用户之间不互通记忆
         return AiServices.builder(Assistant.class)
                 .streamingChatLanguageModel(streamingChatLanguageModel)
+                .chatLanguageModel(chatModel)
                 .chatMemoryProvider(chatMemoryProvider)
                 .retrievalAugmentor(retrievalAugmentor)
                 .build();
