@@ -19,4 +19,6 @@ public class Common {
     public static final String INVALID_USERNAME_OR_PASSWORD = "用户名或密码错误";
     public static final String INVALID_SESSION_ID = "sessionId不合法";
     public static final String UNAUTHORIZED_ACCESS = "无权访问该会话";
+    public static final String UNABLE_TO_ACCESS_THIS_ASSISTANT = "无法访问该助手";
+    public static final String ASSISTANT_NOT_EXIST = "助手不存在";
 }

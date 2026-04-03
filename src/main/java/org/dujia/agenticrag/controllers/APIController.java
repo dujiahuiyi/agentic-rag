@@ -1,12 +1,14 @@
 package org.dujia.agenticrag.controllers;
 
 import org.dujia.agenticrag.annotations.CurrentUserId;
+import org.dujia.agenticrag.domain.AiAssistant;
 import org.dujia.agenticrag.domain.ChatCompletionRequest;
 import org.dujia.agenticrag.domain.ChatSession;
 import org.dujia.agenticrag.domain.KbDocument;
 import org.dujia.agenticrag.enums.ErrorCode;
 import org.dujia.agenticrag.exceptions.BaseException;
 import org.dujia.agenticrag.mapper.ChatSessionMapper;
+import org.dujia.agenticrag.service.AiAssistantService;
 import org.dujia.agenticrag.service.KbDocumentService;
 import org.dujia.agenticrag.service.OpenAiStreamingService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,6 +18,14 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.Map;
+
+// - ai_assistant 是私有资源
+//  - 只有助手拥有者本人才能：
+//      - 发起聊天
+//      - 上传文档到这个助手
+//      - 查询这个助手下文档任务状态
+//      - 使用这个助手对应的知识库
+
 
 @RestController
 @RequestMapping("/v1")
@@ -27,11 +37,22 @@ public class APIController {
     private OpenAiStreamingService openAiStreamingService;
     @Autowired
     private ChatSessionMapper chatSessionMapper;
+    @Autowired
+    private AiAssistantService aiAssistantService;
 
     @PostMapping("/kb/upload")
     public Map<String, Long> uploadDocument(
-            @RequestParam("file") MultipartFile file,
-            @RequestParam("assistant_id") Long assistantId) {
+            @RequestParam("file") @Validated MultipartFile file,
+            @RequestParam("assistant_id") @Validated Long assistantId,
+            @CurrentUserId Long userId) {
+        // study: 检验助手归属，下面的接口都要
+        // todo: 三个接口都调用，都需要查库，后面可以改进
+        // todo: aiAssistant不往下传，改为boolean会不会好点
+        AiAssistant aiAssistant = aiAssistantService.checkAssistant(assistantId, userId);
+        if (aiAssistant == null) {
+            throw new BaseException(ErrorCode.UNABLE_TO_ACCESS_THIS_ASSISTANT);
+        }
+
         if (file == null) {
             throw new BaseException(ErrorCode.THE_FILE_CANNOT_BE_EMPTY);
         }
@@ -49,7 +70,13 @@ public class APIController {
 
     // study: 真非流可返回 Object
     @PostMapping("/chat/completions")
-    public SseEmitter chat(@RequestBody @Validated ChatCompletionRequest request, @CurrentUserId Long userId) {
+    public SseEmitter chat(@RequestBody @Validated ChatCompletionRequest request,
+                           @CurrentUserId Long userId) {
+
+        AiAssistant aiAssistant = aiAssistantService.checkAssistant(request.getAssistantId(), userId);
+        if (aiAssistant == null) {
+            throw new BaseException(ErrorCode.UNABLE_TO_ACCESS_THIS_ASSISTANT);
+        }
 
         Long sessionId = request.getSessionId();
 
@@ -73,7 +100,7 @@ public class APIController {
             ChatSession existingSession = chatSessionMapper.selectById(sessionId);
             if (existingSession == null
                     || !existingSession.getUserId().equals(userId)
-                    || !existingSession.getAssistantId().equals(sessionId)) {
+                    || !existingSession.getAssistantId().equals(request.getAssistantId())) {
                 throw new BaseException(ErrorCode.UNAUTHORIZED_ACCESS);
             }
         }
@@ -82,12 +109,18 @@ public class APIController {
     }
 
     @GetMapping("/kb/status/{task_id}")
-    public Map<String, Object> getUploadStatus(@PathVariable("task_id") Long taskId) {
+    public Map<String, Object> getUploadStatus(@PathVariable("task_id") Long taskId,
+                                               @CurrentUserId Long userId) {
+
         // todo: 是否真的需要加redis
         KbDocument doc = kbDocumentService.getById(taskId);
-
         if (doc == null) {
             throw new BaseException(ErrorCode.DOCUMENT_NOT_FOUND);
+        }
+
+        AiAssistant aiAssistant = aiAssistantService.checkAssistant(doc.getAssistantId(), userId);
+        if (aiAssistant == null) {
+            throw new BaseException(ErrorCode.UNABLE_TO_ACCESS_THIS_ASSISTANT);
         }
 
         return Map.of(

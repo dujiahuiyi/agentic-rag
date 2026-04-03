@@ -44,6 +44,7 @@ public class UserController {
     @Operation(summary = "登录")
     public UserResponse login(@RequestBody @Validated UserRequest userRequest) {
         // todo: 可新增输错5次密码后锁定账户，但需新增解锁方法
+        log.info("{}登录", userRequest.getUsername());
         return sysUserService.login(userRequest);
     }
 }

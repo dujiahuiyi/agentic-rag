@@ -10,4 +10,9 @@ import com.baomidou.mybatisplus.extension.service.IService;
 */
 public interface AiAssistantService extends IService<AiAssistant> {
 
+    String getSystemPromptBySessionId(Long sessionId);
+
+    String buildDefaultPrompt(AiAssistant assistant);
+
+    AiAssistant checkAssistant(Long assistantId, Long userId);
 }

@@ -24,7 +24,10 @@ import dev.langchain4j.service.AiServices;
 import dev.langchain4j.store.embedding.EmbeddingStore;
 import dev.langchain4j.store.embedding.milvus.MilvusEmbeddingStore;
 import org.dujia.agenticrag.domain.Assistant;
+import org.dujia.agenticrag.domain.ChatSession;
 import org.dujia.agenticrag.domain.GoogleSearch;
+import org.dujia.agenticrag.mapper.ChatSessionMapper;
+import org.dujia.agenticrag.service.AiAssistantService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -125,14 +128,31 @@ public class AiConfig {
 
     @Bean
     public ContentRetriever contentRetriever(EmbeddingStore<TextSegment> embeddingStore,
-                                             OpenAiEmbeddingModel embeddingModel) {
+                                             OpenAiEmbeddingModel embeddingModel,
+                                             ChatSessionMapper chatSessionMapper) {
         return EmbeddingStoreContentRetriever.builder()
                 .embeddingModel(embeddingModel)
                 .maxResults(3)
                 .minScore(0.75)
                 .embeddingStore(embeddingStore)
                 // todo: 写死 1 不管哪个用户，都会请求一号助手
-                .filter(metadataKey("assistant_id").isEqualTo(1))
+//                .filter(metadataKey("assistant_id").isEqualTo(1))
+                // study: lambda表达式在spring创建时不会立刻执行，只有当真正被调用的时候才会执行
+                .dynamicFilter(query -> {
+                    Object memoryId = query.metadata().chatMemoryId();
+                    // study: 检查memoryId是不是Long类型，是就把值赋给sessionId
+                    if (!(memoryId instanceof Long sessionId)) {
+                        // 新对话
+                        // todo: 不加过滤，有机会把别的助手的知识块也检索进来
+                        return null;
+                    }
+                    // study: 可以不查表，把memoryId设置成一个复合对象
+                    ChatSession chatSession = chatSessionMapper.selectById(sessionId);
+                    if (chatSession == null) {
+                        return null;
+                    }
+                    return metadataKey("assistant_id").isEqualTo(chatSession.getAssistantId());
+                })
                 .build();
     }
 
@@ -154,6 +174,7 @@ public class AiConfig {
         map.put(googleSearch, "谷歌搜索，遇到本地知识库里没有的问题时可以上网搜索");
         map.put(contentRetriever, "本地向量数据库，优先检索");
         // todo: 会增加RT，可以使用多路召回，然后给ScoringModel重排
+        // todo: 多路召回的情况下，要是问的是自己上传的文件，又去谷歌搜索了怎么办
         return new LanguageModelQueryRouter(openAiChatModel, map);
     }
 
@@ -193,13 +214,22 @@ public class AiConfig {
     public Assistant assistant(StreamingChatLanguageModel streamingChatLanguageModel,
                                OpenAiChatModel chatModel,
                                ChatMemoryProvider chatMemoryProvider,
-                               RetrievalAugmentor retrievalAugmentor) {
-        //todo: 单例之后，如何确保不同用户之间不互通记忆
+                               RetrievalAugmentor retrievalAugmentor,
+                               AiAssistantService aiAssistantService) {
+
         return AiServices.builder(Assistant.class)
                 .streamingChatLanguageModel(streamingChatLanguageModel)
                 .chatLanguageModel(chatModel)
                 .chatMemoryProvider(chatMemoryProvider)
                 .retrievalAugmentor(retrievalAugmentor)
+                //study: 动态生成system prompt
+                .systemMessageProvider(memoryId -> {
+                    if (!(memoryId instanceof Long sessionId)) {
+                        // 新对话
+                        return aiAssistantService.buildDefaultPrompt(null);
+                    }
+                    return aiAssistantService.getSystemPromptBySessionId(sessionId);
+                })
                 .build();
     }
 }

@@ -38,6 +38,12 @@ public class GlobalResponseAdvice implements ResponseBodyAdvice<Object> {
             }
         }
 
+        if (body instanceof Result ||
+                body instanceof byte[] ||
+                body instanceof SseEmitter) {
+            return body;
+        }
+
         return Result.success(body);
     }
 }
