@@ -44,13 +44,46 @@ public class DocumentUploadConsumer {
         String fileUrl = documentMessage.getFileUrl();
         Long assistantId = documentMessage.getAssistantId();
         Long taskId = documentMessage.getTaskId();
+        long deliveryTag = message.getMessageProperties().getDeliveryTag();
+
         try {
 
+            // study: 消息幂等
+            KbDocument kbDocument = kbDocumentService.getById(taskId);
+            if (kbDocument == null) {
+                log.warn("消费端幂等拦截: 根据taskId未查询到文档记录, taskId: {}", taskId);
+                channel.basicAck(deliveryTag, false);
+                return;
+            }
+
+            Integer parseStatus = kbDocument.getParseStatus();
+
+            if (parseStatus != null && parseStatus == 2) {
+                log.info("消费端幂等拦截: 文档已经被成功处理过, taskId: {}", taskId);
+                channel.basicAck(deliveryTag, false);
+                return;
+            }
+
+            if (parseStatus != null && parseStatus != 0) {
+                // todo: 失败也会丢弃，这需要改进
+                log.warn("消费端幂等拦截: 文档处于非待处理状态(当前状态:{}), 跳过执行, taskId: {}", parseStatus, taskId);
+                channel.basicAck(deliveryTag, false);
+                return;
+            }
+
             // todo: 三次入库，后续可改进
-            kbDocumentService.lambdaUpdate()
+            // study: 乐观锁 CAS
+            boolean update = kbDocumentService.lambdaUpdate()
                     .eq(KbDocument::getId, taskId)
+                    .eq(KbDocument::getParseStatus, 0)
                     .set(KbDocument::getParseStatus, 1)
                     .update();
+
+            if (!update) {
+                log.warn("消费端并发拦截: 未能抢占到文档处理权, taskId: {}", taskId);
+                channel.basicAck(deliveryTag, false);
+                return;
+            }
 
             // study：包裹进来，避免在这里出现报错，导致rabbitMQ无限重试
             // study: 一次只加载一个文件
@@ -68,22 +101,32 @@ public class DocumentUploadConsumer {
             // todo: 如果 textSegments 特别多，应分批次（Batch）处理，以防触发硅基流动的 API 超时或频率限制，写入milvus也是
             List<Embedding> content = openAiEmbeddingModel.embedAll(textSegments).content();
             embeddingStore.addAll(content, textSegments);
+
             // todo: 仅用一个id就可以定位了吗
             kbDocumentService.lambdaUpdate()
                     .eq(KbDocument::getId, taskId)
                     .set(KbDocument::getParseStatus, 2)
                     .set(KbDocument::getChunkCount, textSegments.size())
                     .update();
-            channel.basicAck(message.getMessageProperties().getDeliveryTag(), false);
+
+            channel.basicAck(deliveryTag, false);
+
         } catch (Exception e) {
             log.error("文件传入向量数据库失败, taskId: {}, 请查看日志：", taskId, e);
+
+            String errorMsg = e.getMessage() != null ? e.getMessage() : e.toString();
+            if (errorMsg.length() > 500) {
+                errorMsg = errorMsg.substring(0, 500);
+            }
+
             kbDocumentService.lambdaUpdate()
                     .eq(KbDocument::getId, taskId)
                     .set(KbDocument::getParseStatus, 3)
-                    .set(KbDocument::getErrorMsg, "文件传入向量数据库失败")
+                    .set(KbDocument::getErrorMsg, "文件传入向量数据库失败: " + errorMsg)
                     .update();
+
             //todo: 可加入死信队列，但要设计好处理逻辑
-            channel.basicNack(message.getMessageProperties().getDeliveryTag(), false, false);
+            channel.basicNack(deliveryTag, false, false);
         }
     }
 }

@@ -1,24 +1,25 @@
 package org.dujia.agenticrag.service.impl;
 
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.extern.slf4j.Slf4j;
 import org.dujia.agenticrag.commons.Common;
 import org.dujia.agenticrag.domain.DocumentMessage;
 import org.dujia.agenticrag.domain.KbDocument;
 import org.dujia.agenticrag.service.KbDocumentService;
 import org.dujia.agenticrag.mapper.KbDocumentMapper;
+import org.springframework.amqp.AmqpException;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -26,7 +27,9 @@ import java.util.UUID;
 * @description 针对表【kb_document(知识库文档表(MQ异步任务表))】的数据库操作Service实现
 * @createDate 2026-03-23 16:19:09
 */
+@Slf4j
 @Service
+@Transactional(rollbackFor = Exception.class)
 public class KbDocumentServiceImpl extends ServiceImpl<KbDocumentMapper, KbDocument>
     implements KbDocumentService{
 
@@ -36,11 +39,8 @@ public class KbDocumentServiceImpl extends ServiceImpl<KbDocumentMapper, KbDocum
     private KbDocumentMapper kbDocumentMapper;
     @Autowired
     private RabbitTemplate rabbitTemplate;
-    @Autowired
-    private ObjectMapper objectMapper;
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public Long uploadDocument(MultipartFile file, Long assistantId) {
         // todo: 需不要加入redis？加入了能干嘛
 
@@ -71,6 +71,7 @@ public class KbDocumentServiceImpl extends ServiceImpl<KbDocumentMapper, KbDocum
         kbDocument.setFileUrl(absolutePath);
         kbDocument.setParseStatus(0);
 
+        // study: 生产端一致性，入库成功之后，再发mq
         // todo: 可后台进行
         kbDocumentMapper.insert(kbDocument);
 
@@ -79,13 +80,35 @@ public class KbDocumentServiceImpl extends ServiceImpl<KbDocumentMapper, KbDocum
 
         // 后台mq往milvus里塞
         DocumentMessage message = new DocumentMessage(takeId, absolutePath, assistantId);
-        rabbitTemplate.convertAndSend(
-                Common.UPLOAD_EXCHANGE,
-                Common.UPLOAD_ROUTING_KEY,
-                message
-        );
+
+        // study: 事务同步
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            // 注册回调返回
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    sendUploadMessage(message);
+                }
+            });
+        } else {
+            // 事务未启动，直接返回
+            sendUploadMessage(message);
+        }
 
         return takeId;
+    }
+
+    private void sendUploadMessage(DocumentMessage message) {
+        try {
+            rabbitTemplate.convertAndSend(
+                    Common.UPLOAD_EXCHANGE,
+                    Common.UPLOAD_ROUTING_KEY,
+                    message
+            );
+        } catch (AmqpException e) {
+            // todo: 先记录错误日志，后续再考虑重试
+            log.error("MQ发送失败, message: {}", message, e);
+        }
     }
 }
 
