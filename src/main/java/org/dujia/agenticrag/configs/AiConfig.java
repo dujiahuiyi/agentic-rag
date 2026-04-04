@@ -23,6 +23,7 @@ import dev.langchain4j.rag.query.transformer.CompressingQueryTransformer;
 import dev.langchain4j.service.AiServices;
 import dev.langchain4j.store.embedding.EmbeddingStore;
 import dev.langchain4j.store.embedding.milvus.MilvusEmbeddingStore;
+import lombok.extern.slf4j.Slf4j;
 import org.dujia.agenticrag.domain.Assistant;
 import org.dujia.agenticrag.domain.ChatSession;
 import org.dujia.agenticrag.domain.GoogleSearch;
@@ -39,6 +40,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import static dev.langchain4j.store.embedding.filter.MetadataFilterBuilder.metadataKey;
 
+@Slf4j
 @Configuration
 public class AiConfig {
 
@@ -143,13 +145,19 @@ public class AiConfig {
                     // study: 检查memoryId是不是Long类型，是就把值赋给sessionId
                     if (!(memoryId instanceof Long sessionId)) {
                         // 新对话
-                        // todo: 不加过滤，有机会把别的助手的知识块也检索进来
-                        return null;
+                        // study: 不加过滤，有机会把别的助手的知识块也检索进来
+//                        return null;
+                        // 直接抛异常
+//                        throw new IllegalStateException("非法检索请求：缺失有效的 Session ID");
+                        log.warn("非法检索请求：缺失有效的 Session ID");
+                        return metadataKey("assistant_id").isEqualTo(-1L);
                     }
                     // study: 可以不查表，把memoryId设置成一个复合对象
                     ChatSession chatSession = chatSessionMapper.selectById(sessionId);
                     if (chatSession == null) {
-                        return null;
+//                        throw new IllegalStateException("非法检索请求：找不到对应的会话记录 [" + sessionId + "]");
+                        log.warn("非法检索请求：找不到对应的会话记录 [\" + sessionId + \"]");
+                        return metadataKey("assistant_id").isEqualTo(-1L);
                     }
                     return metadataKey("assistant_id").isEqualTo(chatSession.getAssistantId());
                 })

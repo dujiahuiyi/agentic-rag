@@ -53,7 +53,7 @@ public class APIController {
             throw new BaseException(ErrorCode.UNABLE_TO_ACCESS_THIS_ASSISTANT);
         }
 
-        if (file == null) {
+        if (file == null || file.isEmpty()) {
             throw new BaseException(ErrorCode.THE_FILE_CANNOT_BE_EMPTY);
         }
         if (assistantId == null) {

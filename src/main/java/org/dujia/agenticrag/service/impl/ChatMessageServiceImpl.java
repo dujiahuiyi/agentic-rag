@@ -1,10 +1,12 @@
 package org.dujia.agenticrag.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import org.dujia.agenticrag.domain.ChatMessage;
 import org.dujia.agenticrag.service.ChatMessageService;
 import org.dujia.agenticrag.mapper.ChatMessageMapper;
 import org.springframework.stereotype.Service;
+
 
 /**
 * @author 夜聆秋雨
@@ -15,6 +17,21 @@ import org.springframework.stereotype.Service;
 public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageMapper, ChatMessage>
     implements ChatMessageService{
 
+    private final ChatMessageMapper chatMessageMapper;
+
+    public ChatMessageServiceImpl(ChatMessageMapper chatMessageMapper) {
+        this.chatMessageMapper = chatMessageMapper;
+    }
+
+    @Override
+    public ChatMessage getLatestChatMessage(Long sessionId) {
+        LambdaQueryWrapper<ChatMessage> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper
+                .eq(ChatMessage::getSessionId, sessionId)
+                .orderByDesc(ChatMessage::getCreateTime)
+                .last("LIMIT 1");
+        return chatMessageMapper.selectOne(queryWrapper);
+    }
 }
 
 
