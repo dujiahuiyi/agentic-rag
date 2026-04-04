@@ -19,6 +19,7 @@ import org.springframework.amqp.core.Message;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;
+import static dev.langchain4j.store.embedding.filter.MetadataFilterBuilder.metadataKey;
 
 import java.io.IOException;
 import java.util.List;
@@ -91,28 +92,52 @@ public class DocumentUploadConsumer {
             Document document = FileSystemDocumentLoader.loadDocument(fileUrl, documentParser);
             DocumentSplitter splitter = DocumentSplitters.recursive(500, 50);
             List<TextSegment> textSegments = splitter.split(document);
-            for (int i = 0; i < textSegments.size(); i++) {
-                textSegments.get(i).metadata()
-                        .put("doc_id", taskId)
-                        .put("assistant_id", assistantId)
-                        .put("chunk_index", i);
+
+            int totalSegments = textSegments.size();
+            log.info("文档解析完成, taskId: {}, 共切分为 {} 个片段, 准备分批处理", taskId, totalSegments);
+            int batchSize = 50;
+
+            // study: 分批处理前先清理旧向量
+            clearVectorsByDocId(taskId);
+
+            long sleepMs = 100L;
+
+            // study: 如果 textSegments 特别多，应分批次（Batch）处理，以防触发硅基流动的 API 超时或频率限制，写入milvus也是
+            for (int i = 0; i < totalSegments; i += batchSize) {
+
+                int end = Math.min(i + batchSize, totalSegments);
+                List<TextSegment> subList = textSegments.subList(i, end);
+
+                processInBatches(subList, i, taskId, assistantId);
+
+                if (end < totalSegments) {
+                    try {
+                        Thread.sleep(sleepMs);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        throw new RuntimeException("批处理被中断", e);
+                    }
+                }
+
             }
 
-            // todo: 如果 textSegments 特别多，应分批次（Batch）处理，以防触发硅基流动的 API 超时或频率限制，写入milvus也是
-            List<Embedding> content = openAiEmbeddingModel.embedAll(textSegments).content();
-            embeddingStore.addAll(content, textSegments);
-
-            // todo: 仅用一个id就可以定位了吗
             kbDocumentService.lambdaUpdate()
                     .eq(KbDocument::getId, taskId)
                     .set(KbDocument::getParseStatus, 2)
-                    .set(KbDocument::getChunkCount, textSegments.size())
+                    .set(KbDocument::getChunkCount, totalSegments)
                     .update();
 
             channel.basicAck(deliveryTag, false);
 
         } catch (Exception e) {
             log.error("文件传入向量数据库失败, taskId: {}, 请查看日志：", taskId, e);
+
+            // study: 先清理向量，再更新状态为失败
+            try {
+                clearVectorsByDocId(taskId);
+            } catch (Exception ex) {
+                log.warn("清理milvus失败，请查看日志：", e);
+            }
 
             String errorMsg = e.getMessage() != null ? e.getMessage() : e.toString();
             if (errorMsg.length() > 500) {
@@ -128,6 +153,26 @@ public class DocumentUploadConsumer {
             //todo: 可加入死信队列，但要设计好处理逻辑
             channel.basicNack(deliveryTag, false, false);
         }
+    }
+
+    private void processInBatches(List<TextSegment> subList, int index,
+                                  Long taskId, Long assistantId) {
+
+        for (int i = 0; i < subList.size(); i++) {
+            int globalIndex = i + index;
+            subList.get(i).metadata()
+                    .put("doc_id", taskId)
+                    .put("assistant_id", assistantId)
+                    .put("chunk_index", globalIndex);
+        }
+        List<Embedding> content = openAiEmbeddingModel.embedAll(subList).content();
+        embeddingStore.addAll(content, subList);
+    }
+
+    private void clearVectorsByDocId(Long taskId) {
+        embeddingStore.removeAll(
+                metadataKey("doc_id").isEqualTo(taskId)
+        );
     }
 }
 
