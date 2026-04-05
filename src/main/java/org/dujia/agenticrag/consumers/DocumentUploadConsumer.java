@@ -1,5 +1,6 @@
 package org.dujia.agenticrag.consumers;
 
+import cn.hutool.core.util.StrUtil;
 import com.rabbitmq.client.Channel;
 import dev.langchain4j.data.document.Document;
 import dev.langchain4j.data.document.DocumentSplitter;
@@ -10,6 +11,7 @@ import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.openai.OpenAiEmbeddingModel;
 import dev.langchain4j.store.embedding.EmbeddingStore;
+import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.dujia.agenticrag.commons.Common;
 import org.dujia.agenticrag.domain.DocumentMessage;
@@ -22,6 +24,8 @@ import org.springframework.context.annotation.Configuration;
 import static dev.langchain4j.store.embedding.filter.MetadataFilterBuilder.metadataKey;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 @Slf4j
@@ -36,6 +40,13 @@ public class DocumentUploadConsumer {
     private ApacheTikaDocumentParser documentParser;
     @Autowired
     private KbDocumentService kbDocumentService;
+
+    @Data
+    private static class StructureBlock {
+        private final String title;
+        private final String content;
+        private final String sourceType;
+    }
 
 
     @RabbitListener(queues = Common.UPLOAD_QUEUE)
@@ -88,10 +99,14 @@ public class DocumentUploadConsumer {
 
             // study：包裹进来，避免在这里出现报错，导致rabbitMQ无限重试
             // study: 一次只加载一个文件
-            // todo: 有表格等的pdf怎么切，如果是个800字符的代码，会不会直接从中间截断
+            // study: 有表格等的pdf怎么切，如果是个800字符的代码，会不会直接从中间截断
+            // 固定大小切片
             Document document = FileSystemDocumentLoader.loadDocument(fileUrl, documentParser);
-            DocumentSplitter splitter = DocumentSplitters.recursive(500, 50);
-            List<TextSegment> textSegments = splitter.split(document);
+//            DocumentSplitter splitter = DocumentSplitters.recursive(500, 50);
+//            List<TextSegment> textSegments = splitter.split(document);
+
+            // study: 按结果拆分，超长文本递归处理
+            List<TextSegment> textSegments = splitByStructureThenRecursive(document.text());
 
             int totalSegments = textSegments.size();
             log.info("文档解析完成, taskId: {}, 共切分为 {} 个片段, 准备分批处理", taskId, totalSegments);
@@ -155,6 +170,110 @@ public class DocumentUploadConsumer {
         }
     }
 
+    List<TextSegment> splitByStructureThenRecursive(String text) {
+        if (StrUtil.isBlank(text)) {
+            return List.of();
+        }
+
+        // study: 先按结构分块
+        List<StructureBlock> blocks = extractStructureBlocks(text);
+
+        List<TextSegment> result = new ArrayList<>();
+        for (StructureBlock block : blocks) {
+            if (StrUtil.isBlank(block.getContent())) {
+                continue;
+            }
+            // study：生成结果，并负责超长文本递归
+            result.addAll(splitOversizedBlock(block));
+        }
+
+        return result;
+    }
+
+    private List<TextSegment> splitOversizedBlock(StructureBlock block) {
+        String chunkText;
+        if (StrUtil.isNotBlank(block.getTitle())) {
+            chunkText = "标题:" + block.getTitle() + "\\n" + block.getContent();
+        } else {
+            chunkText = block.getContent();
+        }
+
+        if (chunkText.length() <= 500) {
+            TextSegment segment = TextSegment.from(chunkText);
+            segment.metadata()
+                    .put("section_title", block.getTitle())
+                    .put("source_type", block.getSourceType());
+            return List.of(segment);
+        }
+
+        // 只对这个文本进行递归切片
+        DocumentSplitter splitter = DocumentSplitters.recursive(200, 20);
+        List<TextSegment> textSegments = splitter.split(Document.document(chunkText));
+        for (TextSegment segment : textSegments) {
+            segment.metadata()
+                    .put("section_title", block.getTitle())
+                    .put("source_type", "fallback_recursive");
+        }
+
+        return textSegments;
+    }
+
+    // 按结构分段
+    private List<StructureBlock> extractStructureBlocks(String text) {
+        String currentTitle = "";
+        StringBuilder currentParagraph = new StringBuilder();
+        List<StructureBlock> blocks = new ArrayList<>();
+
+        String replace = text.replace("\\r\\n", "\\n");
+        String[] lines = replace.split("\\n");
+
+        for (String line : lines) {
+            // 新标题
+            if (isMarkdownHeading(line)) {
+                // 把当前段落提交成块
+                flushParagraphBlock(blocks, currentTitle, currentParagraph);
+                currentTitle = normalizeHeading(line);
+                continue;
+            }
+            // 空行
+            if (line.trim().isEmpty()) {
+                flushParagraphBlock(blocks, currentTitle, currentParagraph);
+                continue;
+            }
+            // 普通正文
+            if (!currentParagraph.isEmpty()) {
+                currentParagraph.append("\\n");
+            }
+            currentParagraph.append(line);
+        }
+
+        flushParagraphBlock(blocks, currentTitle, currentParagraph);
+
+        return blocks;
+    }
+
+    private void flushParagraphBlock(List<StructureBlock> blocks,
+                                     String currentTitle,
+                                     StringBuilder currentParagraph) {
+        if (currentParagraph.isEmpty()) {
+            return;
+        }
+        String content = currentParagraph.toString().trim();
+        if (StrUtil.isNotBlank(content)) {
+            blocks.add(new StructureBlock(currentTitle, content, "paragraph"));
+        }
+        // 清空currentParagraph
+        currentParagraph.setLength(0);
+    }
+
+    private String normalizeHeading(String line) {
+        return line.replaceFirst("^#{1,3}\\s+", "").trim();
+    }
+
+    private boolean isMarkdownHeading(String line) {
+        return line.matches("^#{1,3}\\s+.+$");
+    }
+
     private void processInBatches(List<TextSegment> subList, int index,
                                   Long taskId, Long assistantId) {
 
@@ -175,6 +294,16 @@ public class DocumentUploadConsumer {
         );
     }
 }
+
+// study:
+//  1. txt/md 之外，针对 pdf/doc/docx 增加按文档结构切片能力
+//  2. pdf 先做版面恢复，按页码/标题/段落/表格分块，再对超长块递归切片
+//  3. doc/docx 按标题层级、段落、列表、表格切片，保留标题路径 metadata
+//  4. 为 chunk 增加 page_no、section_title、source_type、file_type 等 metadata
+//  5. 表格、代码块采用专用切片策略，避免语义被截断
+//  6. 后续可升级为 parent-child chunk 与 token 级切片
+
+
 
 // study: 不能直接写在这，需要单例
 //        EmbeddingStore<TextSegment> embeddingStore = MilvusEmbeddingStore.builder()

@@ -36,6 +36,10 @@ spring:
         prefetch: 1
         # 开启手动确认机制，防止数据库执行失败导致消息丢失
         acknowledge-mode: manual
+  servlet:
+    multipart:
+      max-file-size: 50MB      # 单个文件允许的最大大小
+      max-request-size: 50MB   # 单个请求（可能包含多个文件和其他表单数据）允许的最大大小
 # SpringDoc 配置 (OpenAPI 3)
 springdoc:
   swagger-ui:
@@ -59,14 +63,22 @@ jwt:
   secret: mySecretKey1234567890tytytytytytyhhh
   # 过期时间（单位：毫秒） 1天 = 86400000
   expire: 86400000
+mybatis-plus:
+  global-config:
+    db-config:
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+      insert-strategy: not_null
+      update-strategy: not_null # 关键：只更新非null字段
 langchain4j:
   open-ai:
     streaming-chat-model:
-      api-key:
-      model-name:
-      base-url:
+      api-key: your-api-key
+      model-name: claude-sonnet-4-5-20250929
+      base-url: your-base-url
 app:
   file:
-    upload-dir:
+    upload-dir: E:/codes/loaddoc/
   ai:
-    embedding_model_api_key:
+    embedding_model_api_key: your-api-key
+    reranker_model_model: BAAI/bge-reranker-v2-m3
