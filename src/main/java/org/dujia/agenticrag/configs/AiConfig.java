@@ -23,9 +23,11 @@ import dev.langchain4j.rag.query.transformer.CompressingQueryTransformer;
 import dev.langchain4j.service.AiServices;
 import dev.langchain4j.store.embedding.EmbeddingStore;
 import dev.langchain4j.store.embedding.milvus.MilvusEmbeddingStore;
+import dev.langchain4j.web.search.tavily.TavilyWebSearchEngine;
 import lombok.extern.slf4j.Slf4j;
 import org.dujia.agenticrag.domain.Assistant;
 import org.dujia.agenticrag.domain.ChatSession;
+import org.dujia.agenticrag.domain.GatedWebFallbackRetriever;
 import org.dujia.agenticrag.domain.GoogleSearch;
 import org.dujia.agenticrag.mapper.ChatSessionMapper;
 import org.dujia.agenticrag.service.AiAssistantService;
@@ -129,9 +131,9 @@ public class AiConfig {
     }
 
     @Bean
-    public ContentRetriever contentRetriever(EmbeddingStore<TextSegment> embeddingStore,
-                                             OpenAiEmbeddingModel embeddingModel,
-                                             ChatSessionMapper chatSessionMapper) {
+    public ContentRetriever localContentRetriever(EmbeddingStore<TextSegment> embeddingStore,
+                                                  OpenAiEmbeddingModel embeddingModel,
+                                                  ChatSessionMapper chatSessionMapper) {
         return EmbeddingStoreContentRetriever.builder()
                 .embeddingModel(embeddingModel)
                 .maxResults(3)
@@ -176,11 +178,11 @@ public class AiConfig {
 
     @Bean
     public QueryRouter queryRouter(OpenAiChatModel openAiChatModel,
-                                   ContentRetriever contentRetriever) {
-        GoogleSearch googleSearch = new GoogleSearch();
+                                   ContentRetriever localContentRetriever,
+                                   GoogleSearch googleSearch) {
         Map<ContentRetriever, String> map = new HashMap<>();
         map.put(googleSearch, "谷歌搜索，遇到本地知识库里没有的问题时可以上网搜索");
-        map.put(contentRetriever, "本地向量数据库，优先检索");
+        map.put(localContentRetriever, "本地向量数据库，优先检索");
         // todo: 会增加RT，可以使用多路召回，然后给ScoringModel重排
         // todo: 多路召回的情况下，要是问的是自己上传的文件，又去谷歌搜索了怎么办
         return new LanguageModelQueryRouter(openAiChatModel, map);
@@ -196,13 +198,13 @@ public class AiConfig {
 
     @Bean
     public RetrievalAugmentor retrievalAugmentor(OpenAiChatModel openAiChatModel,
-                                                 QueryRouter queryRouter,
-                                                 ContentAggregator contentAggregator) {
+                                                 ContentAggregator contentAggregator,
+                                                 GatedWebFallbackRetriever gatedWebFallbackRetriever) {
         //study: 使用queryRouter还需要contentRetriever吗
         return DefaultRetrievalAugmentor.builder()
                 .queryTransformer(new CompressingQueryTransformer(openAiChatModel))
-                .queryRouter(queryRouter)
-//                .contentRetriever()
+//                .queryRouter(queryRouter)
+                .contentRetriever(gatedWebFallbackRetriever)
                 .contentAggregator(contentAggregator)
                 .build();
     }
@@ -240,4 +242,21 @@ public class AiConfig {
                 })
                 .build();
     }
+
+    @Bean
+    public TavilyWebSearchEngine tavilyWebSearchEngine(
+            @Value("${app.search.tavily.api-key}") String apiKey,
+            @Value("${app.search.tavily.timeout-seconds}") long timeSeconds,
+            @Value("${app.search.tavily.search-depth}") String searchDepth,
+            @Value("${app.search.tavily.include-answer}") boolean includeAnswer,
+            @Value("${app.search.tavily.include-raw-content}") boolean includeRawContent) {
+        return TavilyWebSearchEngine.builder()
+                .apiKey(apiKey)
+                .timeout(Duration.ofSeconds(timeSeconds))
+                .searchDepth(searchDepth)
+                .includeAnswer(includeAnswer)
+                .includeRawContent(includeRawContent)
+                .build();
+    }
+
 }
