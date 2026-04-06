@@ -16,6 +16,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.dujia.agenticrag.commons.Common;
 import org.dujia.agenticrag.domain.DocumentMessage;
 import org.dujia.agenticrag.domain.KbDocument;
+import org.dujia.agenticrag.service.ElasticsearchChunkIndexService;
 import org.dujia.agenticrag.service.KbDocumentService;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
@@ -25,7 +26,6 @@ import static dev.langchain4j.store.embedding.filter.MetadataFilterBuilder.metad
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 
 @Slf4j
@@ -40,6 +40,8 @@ public class DocumentUploadConsumer {
     private ApacheTikaDocumentParser documentParser;
     @Autowired
     private KbDocumentService kbDocumentService;
+    @Autowired
+    private ElasticsearchChunkIndexService elasticsearchChunkIndexService;
 
     @Data
     private static class StructureBlock {
@@ -114,6 +116,7 @@ public class DocumentUploadConsumer {
 
             // study: 分批处理前先清理旧向量
             clearVectorsByDocId(taskId);
+            elasticsearchChunkIndexService.deleteByDocId(taskId);
 
             long sleepMs = 100L;
 
@@ -124,6 +127,8 @@ public class DocumentUploadConsumer {
                 List<TextSegment> subList = textSegments.subList(i, end);
 
                 processInBatches(subList, i, taskId, assistantId);
+                elasticsearchChunkIndexService.indexBatch(taskId, assistantId,
+                        kbDocument.getFileType(), i, subList);
 
                 if (end < totalSegments) {
                     try {
@@ -152,6 +157,11 @@ public class DocumentUploadConsumer {
                 clearVectorsByDocId(taskId);
             } catch (Exception ex) {
                 log.warn("清理milvus失败，请查看日志：", e);
+            }
+            try {
+                elasticsearchChunkIndexService.deleteByDocId(taskId);
+            } catch (Exception ex) {
+                log.warn("清理elasticsearch失败，请查看日志：", ex);
             }
 
             String errorMsg = e.getMessage() != null ? e.getMessage() : e.toString();

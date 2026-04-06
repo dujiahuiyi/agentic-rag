@@ -5,7 +5,6 @@ import dev.langchain4j.rag.content.retriever.ContentRetriever;
 import dev.langchain4j.rag.query.Query;
 import org.dujia.agenticrag.service.LocalRecallEvaluator;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -13,15 +12,12 @@ import java.util.List;
 @Component
 public class GatedWebFallbackRetriever implements ContentRetriever{
 
-    private final ContentRetriever localContentRetriever;
     private final GoogleSearch googleSearch;
     private final LocalRecallEvaluator localRecallEvaluator;
 
     @Autowired
-    public GatedWebFallbackRetriever(@Qualifier("localContentRetriever") ContentRetriever localContentRetriever,
-                                     GoogleSearch googleSearch,
+    public GatedWebFallbackRetriever(GoogleSearch googleSearch,
                                      LocalRecallEvaluator localRecallEvaluator) {
-        this.localContentRetriever = localContentRetriever;
         this.googleSearch = googleSearch;
         this.localRecallEvaluator = localRecallEvaluator;
     }
