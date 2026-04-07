@@ -82,3 +82,14 @@ app:
   ai:
     embedding_model_api_key: your-api-key
     reranker_model_model: BAAI/bge-reranker-v2-m3
+  search:
+    tavily:
+        api-key: your-api-key
+        timeout-seconds: 10
+        search-depth: basic
+        include-answer: true
+        include-raw-content: false
+    elasticsearch:
+        url: your-base-url
+        api-key: your-api-key
+        index-name: kb_document_chunk

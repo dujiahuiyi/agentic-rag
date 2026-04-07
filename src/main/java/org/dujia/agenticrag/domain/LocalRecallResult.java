@@ -13,7 +13,7 @@ import java.util.List;
 public class LocalRecallResult {
     private List<Content> contents;
     private boolean weak;
-    private double topScore;
+    private double recallStrength;
     private String reason;
     private int hitCount;
 }
