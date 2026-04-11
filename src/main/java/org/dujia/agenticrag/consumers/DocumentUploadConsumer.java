@@ -102,6 +102,9 @@ public class DocumentUploadConsumer {
             // study：包裹进来，避免在这里出现报错，导致rabbitMQ无限重试
             // study: 一次只加载一个文件
             // study: 有表格等的pdf怎么切，如果是个800字符的代码，会不会直接从中间截断
+
+            log.info("正在将{}上传到milvus和es", fileUrl);
+
             // 固定大小切片
             Document document = FileSystemDocumentLoader.loadDocument(fileUrl, documentParser);
 //            DocumentSplitter splitter = DocumentSplitters.recursive(500, 50);
@@ -147,6 +150,7 @@ public class DocumentUploadConsumer {
                     .set(KbDocument::getChunkCount, totalSegments)
                     .update();
 
+            log.info("{}上传到milvus和es成功", fileUrl);
             channel.basicAck(deliveryTag, false);
 
         } catch (Exception e) {
@@ -203,7 +207,7 @@ public class DocumentUploadConsumer {
     private List<TextSegment> splitOversizedBlock(StructureBlock block) {
         String chunkText;
         if (StrUtil.isNotBlank(block.getTitle())) {
-            chunkText = "标题:" + block.getTitle() + "\\n" + block.getContent();
+            chunkText = "标题:" + block.getTitle() + "\n" + block.getContent();
         } else {
             chunkText = block.getContent();
         }
@@ -234,8 +238,8 @@ public class DocumentUploadConsumer {
         StringBuilder currentParagraph = new StringBuilder();
         List<StructureBlock> blocks = new ArrayList<>();
 
-        String replace = text.replace("\\r\\n", "\\n");
-        String[] lines = replace.split("\\n");
+        String replace = text.replace("\r\n", "\n");
+        String[] lines = replace.split("\n");
 
         for (String line : lines) {
             // 新标题
@@ -252,7 +256,7 @@ public class DocumentUploadConsumer {
             }
             // 普通正文
             if (!currentParagraph.isEmpty()) {
-                currentParagraph.append("\\n");
+                currentParagraph.append("\n");
             }
             currentParagraph.append(line);
         }
@@ -296,6 +300,7 @@ public class DocumentUploadConsumer {
         }
         List<Embedding> content = openAiEmbeddingModel.embedAll(subList).content();
         embeddingStore.addAll(content, subList);
+        log.info("第{}批文本块已存入milvus", index);
     }
 
     private void clearVectorsByDocId(Long taskId) {

@@ -14,7 +14,7 @@ import dev.langchain4j.model.scoring.ScoringModel;
 import dev.langchain4j.rag.DefaultRetrievalAugmentor;
 import dev.langchain4j.rag.RetrievalAugmentor;
 import dev.langchain4j.rag.content.aggregator.ContentAggregator;
-import dev.langchain4j.rag.content.aggregator.ReRankingContentAggregator;
+import dev.langchain4j.rag.content.aggregator.DefaultContentAggregator;
 import dev.langchain4j.rag.content.retriever.ContentRetriever;
 import dev.langchain4j.rag.content.retriever.EmbeddingStoreContentRetriever;
 import dev.langchain4j.rag.query.router.LanguageModelQueryRouter;
@@ -139,7 +139,6 @@ public class AiConfig {
                 .maxResults(3)
                 .minScore(0.75)
                 .embeddingStore(embeddingStore)
-                // todo: 写死 1 不管哪个用户，都会请求一号助手
 //                .filter(metadataKey("assistant_id").isEqualTo(1))
                 // study: lambda表达式在spring创建时不会立刻执行，只有当真正被调用的时候才会执行
                 .dynamicFilter(query -> {
@@ -189,11 +188,8 @@ public class AiConfig {
     }
 
     @Bean
-    public ContentAggregator contentAggregator(ScoringModel scoringModel) {
-        return ReRankingContentAggregator.builder()
-                .scoringModel(scoringModel)
-                .minScore(0.75)
-                .build();
+    public ContentAggregator contentAggregator() {
+        return new DefaultContentAggregator();
     }
 
     @Bean

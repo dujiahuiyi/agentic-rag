@@ -70,6 +70,8 @@ public class ElasticsearchChunkIndexService {
             return;
         }
 
+        log.info("doc_id:{}, assistantId:{}正在存入es", docId, assistantId);
+
         Request request = new Request("POST", "/_bulk");
         request.addParameter("refresh", "false");
         request.setOptions(
@@ -105,8 +107,8 @@ public class ElasticsearchChunkIndexService {
             source.put("create_time", Instant.now().toString());
 
             try {
-                ndjson.append(objectMapper.writeValueAsString(action)).append("\\n");
-                ndjson.append(objectMapper.writeValueAsString(source)).append("\\n");
+                ndjson.append(objectMapper.writeValueAsString(action)).append("\n");
+                ndjson.append(objectMapper.writeValueAsString(source)).append("\n");
             } catch (JsonProcessingException e) {
                 throw new IOException("json写入异常，请查看日志：", e);
             }
@@ -119,8 +121,10 @@ public class ElasticsearchChunkIndexService {
             int statusCode = response.getStatusLine().getStatusCode();
             if (statusCode != 200) {
                 String responseBody = EntityUtils.toString(response.getEntity());
+                log.error("doc_id:{}, assistantId:{}无法存入es", docId, assistantId);
                 throw new IOException("Failed to bulk index chunks, status=" + statusCode + ", body=" + responseBody);
             }
+            log.info("doc_id:{}, assistantId:{}已存入es", docId, assistantId);
         } catch (ResponseException e) {
             String responseBody = EntityUtils.toString(e.getResponse().getEntity());
             throw new IOException("Failed to bulk index chunks. ES Response: " + responseBody, e);

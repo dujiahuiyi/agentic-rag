@@ -119,8 +119,13 @@ public class LocalHybridRetriever implements ContentRetriever {
             return null;
         }
 
-        String docId = content.textSegment().metadata().getString("doc_id");
-        String chunkIndex = content.textSegment().metadata().getString("chunk_index");
+        Metadata metadata = content.textSegment().metadata();
+
+        Long rawDocId = metadata.getLong("doc_id");
+        Integer rawChunkIndex = metadata.getInteger("chunk_index");
+
+        String docId = rawDocId != null ? String.valueOf(rawDocId) : null;
+        String chunkIndex = rawChunkIndex != null ? String.valueOf(rawChunkIndex) : null;
 
         if (docId != null && !docId.isBlank() && chunkIndex != null && !chunkIndex.isBlank()) {
             return docId + "_" + chunkIndex;
