@@ -14,19 +14,24 @@ import dev.langchain4j.store.embedding.EmbeddingStore;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.dujia.agenticrag.commons.Common;
+import org.dujia.agenticrag.domain.ContentBlock;
 import org.dujia.agenticrag.domain.DocumentMessage;
 import org.dujia.agenticrag.domain.KbDocument;
+import org.dujia.agenticrag.service.ContentTypeAwareChunker;
 import org.dujia.agenticrag.service.ElasticsearchChunkIndexService;
 import org.dujia.agenticrag.service.KbDocumentService;
+import org.dujia.agenticrag.service.MinerUService;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import static dev.langchain4j.store.embedding.filter.MetadataFilterBuilder.metadataKey;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 @Slf4j
 @Configuration
@@ -42,6 +47,19 @@ public class DocumentUploadConsumer {
     private KbDocumentService kbDocumentService;
     @Autowired
     private ElasticsearchChunkIndexService elasticsearchChunkIndexService;
+    @Autowired
+    private MinerUService minerUService;
+    @Autowired
+    private ContentTypeAwareChunker contentTypeAwareChunker;
+
+    @Value("${app.chunk.max-block-size:500}")
+    private int maxBlockSize = 500;
+
+    @Value("${app.chunk.recursive-size:200}")
+    private int recursiveSize = 200;
+
+    @Value("${app.chunk.recursive-overlap:20}")
+    private int recursiveOverlap = 20;
 
     @Data
     private static class StructureBlock {
@@ -100,18 +118,9 @@ public class DocumentUploadConsumer {
             }
 
             // study：包裹进来，避免在这里出现报错，导致rabbitMQ无限重试
-            // study: 一次只加载一个文件
-            // study: 有表格等的pdf怎么切，如果是个800字符的代码，会不会直接从中间截断
 
             log.info("正在将{}上传到milvus和es", fileUrl);
-
-            // 固定大小切片
-            Document document = FileSystemDocumentLoader.loadDocument(fileUrl, documentParser);
-//            DocumentSplitter splitter = DocumentSplitters.recursive(500, 50);
-//            List<TextSegment> textSegments = splitter.split(document);
-
-            // study: 按结果拆分，超长文本递归处理
-            List<TextSegment> textSegments = splitByStructureThenRecursive(document.text());
+            List<TextSegment> textSegments = resolveTextSegments(fileUrl, kbDocument, taskId);
 
             int totalSegments = textSegments.size();
             log.info("文档解析完成, taskId: {}, 共切分为 {} 个片段, 准备分批处理", taskId, totalSegments);
@@ -121,7 +130,7 @@ public class DocumentUploadConsumer {
             clearVectorsByDocId(taskId);
             elasticsearchChunkIndexService.deleteByDocId(taskId);
 
-            long sleepMs = 100L;
+            long sleepMs = 500L;
 
             // study: 如果 textSegments 特别多，应分批次（Batch）处理，以防触发硅基流动的 API 超时或频率限制，写入milvus也是
             for (int i = 0; i < totalSegments; i += batchSize) {
@@ -212,7 +221,7 @@ public class DocumentUploadConsumer {
             chunkText = block.getContent();
         }
 
-        if (chunkText.length() <= 500) {
+        if (chunkText.length() <= maxBlockSize) {
             TextSegment segment = TextSegment.from(chunkText);
             segment.metadata()
                     .put("section_title", block.getTitle())
@@ -221,7 +230,7 @@ public class DocumentUploadConsumer {
         }
 
         // 只对这个文本进行递归切片
-        DocumentSplitter splitter = DocumentSplitters.recursive(200, 20);
+        DocumentSplitter splitter = DocumentSplitters.recursive(recursiveSize, recursiveOverlap);
         List<TextSegment> textSegments = splitter.split(Document.document(chunkText));
         for (TextSegment segment : textSegments) {
             segment.metadata()
@@ -230,6 +239,21 @@ public class DocumentUploadConsumer {
         }
 
         return textSegments;
+    }
+
+    private List<TextSegment> resolveTextSegments(String fileUrl, KbDocument kbDocument, Long taskId) {
+        String fileType = kbDocument.getFileType();
+        if ("pdf".equalsIgnoreCase(fileType)) {
+            Optional<List<ContentBlock>> minerUResult = minerUService.parsePdf(fileUrl);
+            if (minerUResult.isPresent() && !minerUResult.get().isEmpty()) {
+                log.info("使用 MinerU 解析 PDF 成功, taskId: {}", taskId);
+                return contentTypeAwareChunker.chunk(minerUResult.get());
+            }
+            log.warn("MinerU 不可用或解析结果为空, 降级到 Tika, taskId: {}", taskId);
+        }
+
+        Document document = FileSystemDocumentLoader.loadDocument(fileUrl, documentParser);
+        return splitByStructureThenRecursive(document.text());
     }
 
     // 按结构分段

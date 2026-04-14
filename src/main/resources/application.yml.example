@@ -93,3 +93,12 @@ app:
         url: your-base-url
         api-key: your-api-key
         index-name: kb_document_chunk
+    mineru:
+        base-url: http://localhost:8000
+        timeout-seconds: 600
+        lang: ch
+        backend: hybrid-auto-engine
+  chunk:
+    max-block-size: 1024
+    recursive-size: 512
+    recursive-overlap: 80

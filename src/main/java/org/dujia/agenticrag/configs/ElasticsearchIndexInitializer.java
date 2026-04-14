@@ -41,6 +41,14 @@ public class ElasticsearchIndexInitializer implements ApplicationRunner {
                   "source_type": { "type": "keyword" },
                   "file_type": { "type": "keyword" },
                   "chunk_text": { "type": "text" },
+                  "page_no": { "type": "integer" },
+                  "content_type": { "type": "keyword" },
+                  "heading_path": {
+                    "type": "text",
+                    "fields": {
+                      "keyword": { "type": "keyword", "ignore_above": 512 }
+                    }
+                  },
                   "create_time": {
                     "type": "date",
                     "format": "strict_date_optional_time||epoch_millis"

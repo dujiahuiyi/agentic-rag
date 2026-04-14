@@ -104,6 +104,12 @@ public class ElasticsearchChunkIndexService {
             source.put("source_type", sourceType == null ? "" : sourceType);
             source.put("file_type", fileType == null ? "" : fileType);
             source.put("chunk_text", segment.text() == null ? "" : segment.text());
+            Integer pageNo = segment.metadata().getInteger("page_no");
+            String contentType = segment.metadata().getString("content_type");
+            String headingPath = segment.metadata().getString("heading_path");
+            source.put("page_no", pageNo != null ? pageNo : 0);
+            source.put("content_type", contentType != null ? contentType : "");
+            source.put("heading_path", headingPath != null ? headingPath : "");
             source.put("create_time", Instant.now().toString());
 
             try {

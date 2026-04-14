@@ -110,16 +110,18 @@ import java.util.Map;
                         "filter", List.of(Map.of("term", Map.of("assistant_id", assistantId))),
                         "should", List.of(
                                 Map.of("match", Map.of("chunk_text", Map.of("query", queryText))),
-                                Map.of("match", Map.of("section_title", Map.of("query", queryText)))
+                                Map.of("match", Map.of("section_title", Map.of("query", queryText))),
+                                Map.of("match", Map.of("heading_path", Map.of("query", queryText)))
                         ),
                         "minimum_should_match", 1
                 )
         );
 
         return Map.of(
-                "size", 5,
+                "size", 8,
                 "_source", List.of("doc_id", "assistant_id", "chunk_index",
-                        "section_title", "source_type", "file_type", "chunk_text"),
+                        "section_title", "source_type", "file_type", "chunk_text",
+                        "page_no", "content_type", "heading_path"),
                 "query", queryBody
         );
     }

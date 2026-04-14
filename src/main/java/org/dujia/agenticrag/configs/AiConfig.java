@@ -136,8 +136,8 @@ public class AiConfig {
                                                   ChatSessionMapper chatSessionMapper) {
         return EmbeddingStoreContentRetriever.builder()
                 .embeddingModel(embeddingModel)
-                .maxResults(3)
-                .minScore(0.75)
+                .maxResults(6)
+                .minScore(0.60)
                 .embeddingStore(embeddingStore)
 //                .filter(metadataKey("assistant_id").isEqualTo(1))
                 // study: lambda表达式在spring创建时不会立刻执行，只有当真正被调用的时候才会执行
